@@ -1,7 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const fs = require('fs');
-const { parse } = require('csv-parse/sync'); // Correct import for parse function
+const { parse } = require('csv-parse/sync');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
 const API_KEY = '56787f9df62613cca856e93082439648';
@@ -16,62 +16,41 @@ const csvWriter = createCsvWriter({
     { id: 'linkedin', title: 'LinkedIn' },
     { id: 'location', title: 'Location' },
     { id: 'job', title: 'Job' },
-    { id: 'jobElement', title: 'Job Element' }, // New column for job element HTML
-    { id: 'locationElement', title: 'Location Element' }, // New column for location element HTML
+    { id: 'jobElement', title: 'Job Element' },
+    { id: 'locationElement', title: 'Location Element' },
   ],
 });
 
-// Function to scrape data
 async function scrapeData(url) {
-  // Including &render=true to ensure JavaScript content is rendered
   const fullUrl = `http://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(url)}&render=true`;
   try {
     const response = await axios.get(fullUrl);
     const $ = cheerio.load(response.data);
-
-    // Updated selectors based on the provided HTML
     const github = $("a[href*='github.com']").attr('href') || 'N/A';
     const linkedin = $("a[href*='linkedin.com']").attr('href') || 'N/A';
-
-
-    const jobSelector = "i[aria-label='work']";
-    const locationSelector = "i[aria-label='pin_drop']";
-
-    const job = $(jobSelector).closest('li').find('p').text() || 'N/A';
-    const location = $(locationSelector).closest('li').find('p').text() || 'N/A';
-
-    // For name, assuming it's within a specific tag that can be uniquely identified.
-    const name = $(".name-class or #name-id").text() || 'N/A'; // Adjust ".name-class or #name-id" based on actual class or id.
-
-    // For job and location HTML elements, if you want to capture the raw HTML.
-    const jobElement = $(".job-class or #job-id").html() || 'N/A'; // Adjust selector.
-    const locationElement = $(".location-class or #location-id").html() || 'N/A'; // Adjust selector.
-
-    return { url, github, linkedin, name, location, job, jobElement, locationElement };
+    const job = $("li:contains('at')").text().split('at')[1].trim() || 'N/A';
+    const location = $("li:contains('City')").text().trim() || 'N/A';
+    const jobElement = $("li:contains('at')").html() || 'N/A';
+    const locationElement = $("li:contains('City')").html() || 'N/A';
+    return { url, github, linkedin, location, job, jobElement, locationElement };
   } catch (error) {
     console.error(`Error scraping ${url}: `, error.message);
-    return { url, github: 'N/A', linkedin: 'N/A', name: 'N/A', location: 'N/A', job: 'N/A', jobElement: 'N/A', locationElement: 'N/A' };
+    return { url, github: 'N/A', linkedin: 'N/A', location: 'N/A', job: 'N/A', jobElement: 'N/A', locationElement: 'N/A' };
   }
 }
 
-// Main function to read URLs and scrape data
 async function readUrlsAndScrape() {
-  // Synchronous reading and parsing of the CSV file
   const fileContent = fs.readFileSync(inputFile, 'utf8');
   const urls = parse(fileContent, { columns: false, skip_empty_lines: true }).flat();
-
   const scrapeResults = [];
   for (const url of urls) {
     console.log(`Scraping: ${url}`);
     const data = await scrapeData(url);
     scrapeResults.push(data);
   }
-
-  // Writing the results to a CSV file
   csvWriter.writeRecords(scrapeResults)
     .then(() => console.log('The CSV file was written successfully'))
     .catch((err) => console.error('Error writing CSV:', err));
 }
 
-// Execute the main function
 readUrlsAndScrape();
