@@ -1,10 +1,9 @@
-const axios = require('axios');
+const puppeteer = require('puppeteer');
 const cheerio = require('cheerio');
 const fs = require('fs');
-const { parse } = require('csv-parse/sync'); // Correct import for parse function
+const { parse } = require('csv-parse/sync');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 
-const API_KEY = '56787f9df62613cca856e93082439648';
 const inputFile = 'input.csv';
 const outputFile = 'output.csv';
 
@@ -14,49 +13,53 @@ const csvWriter = createCsvWriter({
     { id: 'url', title: 'URL' },
     { id: 'github', title: 'GitHub' },
     { id: 'linkedin', title: 'LinkedIn' },
-    { id: 'location', title: 'Location' },
-    { id: 'job', title: 'Job' },
-    { id: 'jobElement', title: 'Job Element' }, // New column for job element HTML
-    { id: 'locationElement', title: 'Location Element' }, // New column for location element HTML
+    { id: 'jobTitle', title: 'Location' },
   ],
 });
 
-// Function to scrape data
+// Function to scrape data using Puppeteer
 async function scrapeData(url) {
-  // Including &render=true to ensure JavaScript content is rendered
-  const fullUrl = `http://api.scraperapi.com?api_key=${API_KEY}&url=${encodeURIComponent(url)}&render=true`;
+  let browser = null;
   try {
-    const response = await axios.get(fullUrl);
-    const $ = cheerio.load(response.data);
+    browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle2' });
 
-    // Updated selectors based on the provided HTML
+    // Additional delay if needed, after page load
+    await page.evaluate(() => {
+      return new Promise(resolve => setTimeout(resolve, 5000)); // Wait for 5 seconds
+    });
+
+
+    // Get page content and load into Cheerio
+    const content = await page.content();
+    const $ = cheerio.load(content);
+
     const github = $("a[href*='github.com']").attr('href') || 'N/A';
     const linkedin = $("a[href*='linkedin.com']").attr('href') || 'N/A';
+    let jobTitle = 'N/A';
+    const liElements = $("li.sc-hWnHHk.cIEfHe");
+
+    if (liElements.eq(1).find('i').text().includes('pin')) {
+      jobTitle = liElements.eq(1).find("p").text().trim();
+    } else if (liElements.eq(2).find('i').text().includes('pin')) {
+      jobTitle = liElements.eq(2).find("p").text().trim();
+    }
 
 
-    const jobSelector = "i[aria-label='work']";
-    const locationSelector = "i[aria-label='pin_drop']";
-
-    const job = $(jobSelector).closest('li').find('p').text() || 'N/A';
-    const location = $(locationSelector).closest('li').find('p').text() || 'N/A';
-
-    // For name, assuming it's within a specific tag that can be uniquely identified.
-    const name = $(".name-class or #name-id").text() || 'N/A'; // Adjust ".name-class or #name-id" based on actual class or id.
-
-    // For job and location HTML elements, if you want to capture the raw HTML.
-    const jobElement = $(".job-class or #job-id").html() || 'N/A'; // Adjust selector.
-    const locationElement = $(".location-class or #location-id").html() || 'N/A'; // Adjust selector.
-
-    return { url, github, linkedin, name, location, job, jobElement, locationElement };
+    return { url, github, linkedin, jobTitle };
   } catch (error) {
     console.error(`Error scraping ${url}: `, error.message);
-    return { url, github: 'N/A', linkedin: 'N/A', name: 'N/A', location: 'N/A', job: 'N/A', jobElement: 'N/A', locationElement: 'N/A' };
+    return { url, github: 'N/A', linkedin: 'N/A', jobTitle: 'N/A' };
+  } finally {
+    if (browser !== null) {
+      await browser.close();
+    }
   }
 }
 
 // Main function to read URLs and scrape data
 async function readUrlsAndScrape() {
-  // Synchronous reading and parsing of the CSV file
   const fileContent = fs.readFileSync(inputFile, 'utf8');
   const urls = parse(fileContent, { columns: false, skip_empty_lines: true }).flat();
 
@@ -67,7 +70,6 @@ async function readUrlsAndScrape() {
     scrapeResults.push(data);
   }
 
-  // Writing the results to a CSV file
   csvWriter.writeRecords(scrapeResults)
     .then(() => console.log('The CSV file was written successfully'))
     .catch((err) => console.error('Error writing CSV:', err));

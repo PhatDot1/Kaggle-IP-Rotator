@@ -26,16 +26,22 @@ async function scrapeData(url) {
   try {
     const response = await axios.get(fullUrl);
     const $ = cheerio.load(response.data);
+    const name = $(".sc-kFCroH.ctlLBx").text().trim() || 'N/A';
+
     const github = $("a[href*='github.com']").attr('href') || 'N/A';
     const linkedin = $("a[href*='linkedin.com']").attr('href') || 'N/A';
-    const job = $("li:contains('at')").text().split('at')[1].trim() || 'N/A';
-    const location = $("li:contains('City')").text().trim() || 'N/A';
-    const jobElement = $("li:contains('at')").html() || 'N/A';
-    const locationElement = $("li:contains('City')").html() || 'N/A';
-    return { url, github, linkedin, location, job, jobElement, locationElement };
+    const jobElement = $("li.sc-hWnHHk.cIEfHe").has("i.rmwc-icon--ligature").eq(1).parent().html() || 'N/A';
+    // Extracting just the text for the job
+    const job = jobElement ? $(jobElement).text().trim() : 'N/A';
+
+    // The entire location element including the outer HTML of the list item
+    const locationElement = $("li.sc-hWnHHk.cIEfHe").has("i.rmwc-icon--ligature").eq(2).parent().html() || 'N/A';
+    // Extracting just the text for the location
+    const location = locationElement ? $(locationElement).text().trim() : 'N/A';
+    return { url, name, github, linkedin, location, job, jobElement, locationElement };
   } catch (error) {
     console.error(`Error scraping ${url}: `, error.message);
-    return { url, github: 'N/A', linkedin: 'N/A', location: 'N/A', job: 'N/A', jobElement: 'N/A', locationElement: 'N/A' };
+    return { url, name: 'N/A', github: 'N/A', linkedin: 'N/A', location: 'N/A', job: 'N/A', jobElement: 'N/A', locationElement: 'N/A' };
   }
 }
 
