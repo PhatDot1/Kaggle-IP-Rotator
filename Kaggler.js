@@ -15,21 +15,21 @@ const csvWriter = createCsvWriter({
     { id: 'linkedin', title: 'LinkedIn' },
     { id: 'jobTitle', title: 'Location' },
   ],
+  append: true, // Make sure we're appending to the file instead of overwriting
 });
 
 // Function to scrape data using Puppeteer
 async function scrapeData(url) {
   let browser = null;
   try {
-    browser = await puppeteer.launch();
+    browser = await puppeteer.launch({ timeout: 0 }); // Disable timeout for the browser launch
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2' });
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 0 }); // Disable timeout for navigation
 
     // Additional delay if needed, after page load
     await page.evaluate(() => {
       return new Promise(resolve => setTimeout(resolve, 5000)); // Wait for 5 seconds
     });
-
 
     // Get page content and load into Cheerio
     const content = await page.content();
@@ -45,7 +45,6 @@ async function scrapeData(url) {
     } else if (liElements.eq(2).find('i').text().includes('pin')) {
       jobTitle = liElements.eq(2).find("p").text().trim();
     }
-
 
     return { url, github, linkedin, jobTitle };
   } catch (error) {
@@ -64,15 +63,18 @@ async function readUrlsAndScrape() {
   const urls = parse(fileContent, { columns: false, skip_empty_lines: true }).flat();
 
   const scrapeResults = [];
-  for (const url of urls) {
-    console.log(`Scraping: ${url}`);
-    const data = await scrapeData(url);
+  for (let i = 0; i < urls.length; i++) {
+    console.log(`Scraping: ${urls[i]}`);
+    const data = await scrapeData(urls[i]);
     scrapeResults.push(data);
-  }
 
-  csvWriter.writeRecords(scrapeResults)
-    .then(() => console.log('The CSV file was written successfully'))
-    .catch((err) => console.error('Error writing CSV:', err));
+    // Save progress every 100 URLs or at the end
+    if ((i + 1) % 100 === 0 || i === urls.length - 1) {
+      await csvWriter.writeRecords(scrapeResults.splice(0, scrapeResults.length)) // Write current batch and clear array
+        .then(() => console.log('Progress saved to CSV file'))
+        .catch((err) => console.error('Error writing CSV:', err));
+    }
+  }
 }
 
 // Execute the main function
